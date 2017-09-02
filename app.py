@@ -13,7 +13,7 @@ from flask import Flask, request, abort
 from linebot import (LineBotApi, WebhookParser)
 from linebot.exceptions import (InvalidSignatureError)
 from linebot.models import (
-    MessageEvent, TextMessage, TextSendMessage, LocationMessage,
+    MessageEvent, TextMessage, TextSendMessage, LocationMessage, ConfirmTemplate,
     PostbackEvent, JoinEvent, FollowEvent, TemplateSendMessage, CarouselTemplate, CarouselColumn,
     ButtonsTemplate, PostbackTemplateAction, MessageTemplateAction, URITemplateAction
 )
@@ -99,50 +99,54 @@ def callback():
 
         if isinstance(event, PostbackEvent):
 
-            data = event.postback.data
-            postback_data_dict = get_postback_data_dict(data)
+            data_str = event.postback.data
+            data_dict = dict(urlparse.parse_qsl(data_str))
             try:
-                next = postback_data_dict['next']
+                next = data_dict['next']
             except:
                 next = ''
 
-            if 'budget' in next:
+            if next == 'budget':
 
                 line_bot_api.reply_message(
                     event.reply_token,
-                    get_budget_buttons_template_message(data)
+                    get_budget_buttons_template_message(data_dict)
                 )
 
-            elif "transportation" in next:
+            elif next == 'transportation':
 
                 line_bot_api.reply_message(
                     event.reply_token,
-                    get_transportation_buttons_template_message(data)
+                    get_transportation_buttons_template_message(data_dict)
                 )
 
-            elif "showresult" in next:
+            elif next == "show-result":
 
-                location_geometry = get_geocode(postback_data_dict['area'])
-
-                places = get_places_by_textsearch(
-                    postback_data_dict['budget'],
-                    postback_data_dict['transportation'],
-                    location_geometry
+                places = get_places_by_nearby_search(
+                    data_dict['budget'],
+                    data_dict['transportation'],
+                    get_geocode(data_dict['area'])
                 )["results"]
 
+                nth_result = 0
+                start_index = nth_result * 5
+                end_index = 5 + nth_result * 5
+
                 line_bot_api.reply_message(
                     event.reply_token,
-                    get_spot_carousels(places[:5])
+                    'keyword': 'レストラン カフェ',
+                    [get_spot_carousels(places[start_index:end_index]),
+                     get_additional_search_confirm_template(data_str)]
                 )
 
-            if "detail" in data:
 
-                place_id = dict(urlparse.parse_qsl(data))['id'] # id in postback_data. Not the result json.
+            if "detail" in data_str:place_id = dict(urlparse.parse_qsl(data_str))['id'] # id in postback_data_str. Not the result json.
                 place_detail = get_place_detail(place_id)['result']
 
-                if 'map' in data:
+                messages = []
+                if 'map' in data_str:
                     messages = [TextSendMessage(text=place_detail['url'])]
-                if 'phone' in data:
+                if 'phone' in data_str:
                     messages = [TextSendMessage(text=place_detail['formatted_phone_number'])]
 
                 line_bot_api.reply_message(
@@ -161,11 +165,7 @@ def get_area_buttons_template_message(area):
 
     chou_count = AREA_COUNT[area]
 
-    actions = [PostbackTemplateAction(
-                    label='{}丁目'.format(str(i)),
-                    text='{}の{}丁目'.format(area, str(i)), # it would send a text after postback
-                    data='area={}{}&next=budget'.format(area, str(i))
-                ) for i in range(1, chou_count+1)]
+    actions = [get_area_postback_template_action(area, i) for i in range(1, chou_count+1)]
 
     buttons_template_message = TemplateSendMessage(
         alt_text='{}の何丁目にいますか？'.format(area),
@@ -179,15 +179,24 @@ def get_area_buttons_template_message(area):
     return buttons_template_message
 
 
-def get_budget_buttons_template_message(postback_data):
+def get_area_postback_template_action(area, i):
 
-    postback_data_without_next = re.sub('&next=.*', '', postback_data)
+    data_dict = {
+        'area': area + str(i),
+        'next': 'budget'
+    }
 
-    actions = [PostbackTemplateAction(
-                    label=budget_range,
-                    text="{}なところですね。".format(budget_range),
-                    data=postback_data_without_next + '&budget=' + str(i+1) + '&next=transportation'
-                )for i, budget_range in enumerate(['安め', '普通', '高め'])]
+    return PostbackTemplateAction(
+                    label='{}丁目'.format(str(i)),
+                    text='{}の{}丁目'.format(area, str(i)),
+                    data=urlparse.urlencode(data_dict)
+            )
+
+
+def get_budget_buttons_template_message(data_dict):
+
+    actions = [get_budget_postback_template_action(data_dict, i, budget_range)
+               for i, budget_range in enumerate(['安め', '普通', '高め'])]
 
     buttons_template_message = TemplateSendMessage(
         alt_text='予算を決めるボタンが表示されています',
@@ -201,15 +210,24 @@ def get_budget_buttons_template_message(postback_data):
     return buttons_template_message
 
 
-def get_transportation_buttons_template_message(postback_data):
+def get_budget_postback_template_action(data_dict, i, budget_range):
 
-    postback_data_without_next = re.sub('&next=.*', '', postback_data)
+    data_dict['budget'] = i + 1
+    data_dict['next'] = 'transportation'
+    data = urlparse.urlencode(data_dict)
 
-    actions = [PostbackTemplateAction(
-                    label=transportation,
-                    text='{}で移動します。'.format(transportation),
-                    data=postback_data_without_next + '&transportation=' + transportation + '&next=showresult'
-                )for transportation in ['徒歩', '自転車', '車']]
+    return PostbackTemplateAction(
+               label=budget_range,
+               text="{}なところですね。".format(budget_range),
+               data=data
+           )
+
+
+
+def get_transportation_buttons_template_message(data_dict):
+
+    actions = [get_transportation_postback_template_action(data_dict, transportation)
+               for transportation in ['徒歩', '自転車', '車']]
 
     buttons_template_message = TemplateSendMessage(
         alt_text='移動手段を決めるボタンが表示されています',
@@ -221,6 +239,19 @@ def get_transportation_buttons_template_message(postback_data):
     )
 
     return buttons_template_message
+
+
+def get_transportation_postback_template_action(data_dict, transportation):
+
+    data_dict['next'] = 'show-result'
+    data_dict['transportation'] = transportation
+    data = urlparse.urlencode(data_dict)
+
+    return PostbackTemplateAction(
+               label=transportation,
+               text='{}で移動します。\n検索にちょっとだけ時間を頂きます。'.format(transportation),
+               data=data
+           )
 
 
 def get_spot_carousels(places5):
@@ -246,7 +277,7 @@ def get_carousel_column_template(place):
     except:
         photo_url = 'https://developers.google.com/maps/documentation/static-maps/images/quota.png'
 
-    # 住所が長すぎると予算を表示するスペースが無くなる問題。
+    # 住所が長すぎると予算を表示するスペースが無くなる問題の対処。
     line_change = '\n'
     if len(area) > 17:
         line_change = ''
@@ -281,6 +312,30 @@ def get_carousel_column_template(place):
 
     return carousel_column
 
+def get_additional_search_confirm_template(postback_data):
+
+    confirm_template_message = TemplateSendMessage(
+        alt_text='Confirm template',
+        template=ConfirmTemplate(
+            text='追の5件を表示しますか？',
+            actions=[
+                PostbackTemplateAction(
+                    label='表示する',
+                    text='表示する',
+                    data=postback_data
+                ),
+                MessageTemplateAction(
+                    label='終了する',
+                    text='終了する'
+                )
+            ]
+        )
+    )
+
+    return confirm_template_message
+
+
+
 # get template function end
 
 ###############################################
@@ -297,7 +352,6 @@ def get_geocode(address):
     s = requests.Session()
     r = s.get(GEOCODING_ENDPOINT, params=params)
     json = r.json()
-    pprint.pprint(json)
     location = json['results'][0]['geometry']['location']
 
     location_str = str(location['lat']) + ',' + str(location['lng'])
@@ -305,7 +359,7 @@ def get_geocode(address):
     return location_str
 
 
-def get_places_by_textsearch(budget, transportation, location_geometry):
+def get_places_by_nearby_search(budget, transportation, location_geometry):
 
     radius = ''
     if transportation is 'onfoot':
@@ -317,13 +371,13 @@ def get_places_by_textsearch(budget, transportation, location_geometry):
 
     params = {
         'key': PLACES_APIKEY,
+        'keyword': 'レストラン OR カフェ OR 定食 OR バー',
         'location': location_geometry,
         'radius': radius,
         'maxprice': budget,
         'minprice': str(int(budget)-1),
         # aquarium cafe art_gallery bar bowling_alley museum movie_theater meal_delivery meal_takeaway
         # zoo spa restaurant
-        'type': 'restaurant',
         'opennow': 'true',
         'rankby': 'prominence',
         'language': 'ja'
@@ -346,8 +400,6 @@ def get_place_detail(place_id):
     s = requests.Session()
     r = s.get(PLACES_DETAIL_ENDPOINT, params=params)
     json_result = r.json()
-
-    # pprint.pprint(json_result)  # encode error
 
     return json_result
 
