@@ -6,6 +6,8 @@ import sys
 from dotenv import load_dotenv
 import pprint
 import re
+import json
+import pickle
 import requests
 import urllib.parse as urlparse
 from argparse import ArgumentParser
@@ -17,6 +19,8 @@ from linebot.models import (
     PostbackEvent, JoinEvent, FollowEvent, TemplateSendMessage, CarouselTemplate, CarouselColumn,
     ButtonsTemplate, PostbackTemplateAction, MessageTemplateAction, URITemplateAction
 )
+
+# tested in ngrok 8000
 
 CHATBOT_ENDPOINT = 'https://chatbot-api.userlocal.jp/api/chat'
 SIMPLE_WIKIPEDIA_API = 'http://wikipedia.simpleapi.net/api'
@@ -54,6 +58,7 @@ parser = WebhookParser(CHANNEL_SECRET)
 
 app = Flask(__name__)
 
+
 @app.route("/callback", methods=['POST'])
 def callback():
     signature = request.headers['X-Line-Signature']
@@ -87,10 +92,10 @@ def callback():
                         get_area_buttons_template_message(text)
                     )
 
-            if isinstance(event.message, LocationMessage):
+            # if isinstance(event.message, LocationMessage):
 
-                latitude = event.message.latitude
-                longtitude = event.message.longitude
+                # latitude = event.message.latitude
+                # longtitude = event.message.longitude
 
                 # line_bot_api.reply_message(
                 #     event.reply_token,
@@ -128,19 +133,30 @@ def callback():
                     get_geocode(data_dict['area'])
                 )["results"]
 
-                nth_result = 0
-                start_index = nth_result * 5
-                end_index = 5 + nth_result * 5
+                result_count = len(places)
+
+                nth_result = data_dict['nth-result']
+
+                start_index = int(nth_result) * 5
+                end_index = 5 + int(nth_result) * 5
+
+                second_message = get_additional_search_confirm_template(data_dict)
+
+                if end_index > result_count:
+                    end_index = result_count - 1
+                    start_index = end_index - (end_index % 5)
+                    second_message = TextSendMessage(
+                        text='指定された条件でこれ以上の候補は見つかりませんでした。\n条件を変えて検索する場合は、下の店を探すから現在地を入力してください。'
+                    )
 
                 line_bot_api.reply_message(
                     event.reply_token,
-                    'keyword': 'レストラン カフェ',
                     [get_spot_carousels(places[start_index:end_index]),
-                     get_additional_search_confirm_template(data_str)]
+                     second_message]
                 )
 
-
-            if "detail" in data_str:place_id = dict(urlparse.parse_qsl(data_str))['id'] # id in postback_data_str. Not the result json.
+            if "detail" in data_str:
+                place_id = dict(urlparse.parse_qsl(data_str))['id']
                 place_detail = get_place_detail(place_id)['result']
 
                 messages = []
@@ -188,7 +204,7 @@ def get_area_postback_template_action(area, i):
 
     return PostbackTemplateAction(
                     label='{}丁目'.format(str(i)),
-                    text='{}の{}丁目'.format(area, str(i)),
+                    text='今は{}の{}丁目'.format(area, str(i)),
                     data=urlparse.urlencode(data_dict)
             )
 
@@ -223,7 +239,6 @@ def get_budget_postback_template_action(data_dict, i, budget_range):
            )
 
 
-
 def get_transportation_buttons_template_message(data_dict):
 
     actions = [get_transportation_postback_template_action(data_dict, transportation)
@@ -245,11 +260,12 @@ def get_transportation_postback_template_action(data_dict, transportation):
 
     data_dict['next'] = 'show-result'
     data_dict['transportation'] = transportation
+    data_dict['nth-result'] = 0
     data = urlparse.urlencode(data_dict)
 
     return PostbackTemplateAction(
                label=transportation,
-               text='{}で移動します。\n検索にちょっとだけ時間を頂きます。'.format(transportation),
+               text='{}で行ける範囲で。\n指定された条件で、今現在営業中の店をお探しします。\n検索にちょっとだけ時間を頂きます。'.format(transportation),
                data=data
            )
 
@@ -268,7 +284,8 @@ def get_spot_carousels(places5):
 
 def get_carousel_column_template(place):
 
-    area = re.sub('日本、[\s\S]?(〒\d{3}-\d{4}[\s\S]?)?茨城県つくば市', '', place['formatted_address'])
+    # area = re.sub('日本、[\s\S]?(〒\d{3}-\d{4}[\s\S]?)?茨城県つくば市', '', place['formatted_address'])
+    area = re.sub('つくば市', '', place['vicinity'])
 
     gmap_url = get_place_detail(place['place_id'])['result']['url']
 
@@ -304,7 +321,7 @@ def get_carousel_column_template(place):
                             uri=gmap_url
                         ),
                         PostbackTemplateAction(
-                            label='電話をする',
+                            label='電話番号を表示する',
                             data='action=detail_phone&id={}'.format(place['place_id'])
                         )
                     ]
@@ -312,17 +329,20 @@ def get_carousel_column_template(place):
 
     return carousel_column
 
-def get_additional_search_confirm_template(postback_data):
+
+def get_additional_search_confirm_template(data_dict):
+
+    data_dict['nth-result'] = int(data_dict['nth-result']) + 1
 
     confirm_template_message = TemplateSendMessage(
-        alt_text='Confirm template',
+        alt_text='追加の5件を表示しますか？',
         template=ConfirmTemplate(
-            text='追の5件を表示しますか？',
+            text='追加の5件を表示しますか？',
             actions=[
                 PostbackTemplateAction(
                     label='表示する',
                     text='表示する',
-                    data=postback_data
+                    data=urlparse.urlencode(data_dict)
                 ),
                 MessageTemplateAction(
                     label='終了する',
@@ -333,7 +353,6 @@ def get_additional_search_confirm_template(postback_data):
     )
 
     return confirm_template_message
-
 
 
 # get template function end
@@ -359,14 +378,15 @@ def get_geocode(address):
     return location_str
 
 
-def get_places_by_nearby_search(budget, transportation, location_geometry):
+def get_places_by_by_search(budget, transportation, location_geometry):
 
     radius = ''
-    if transportation is 'onfoot':
+    print(transportation)
+    if transportation == '徒歩':
         radius = '700'
-    elif transportation is 'bicycle':
+    elif transportation == '自転車':
         radius = '2000'
-    elif transportation is 'car':
+    elif transportation == '車':
         radius = '8000'
 
     params = {
@@ -376,15 +396,16 @@ def get_places_by_nearby_search(budget, transportation, location_geometry):
         'radius': radius,
         'maxprice': budget,
         'minprice': str(int(budget)-1),
-        # aquarium cafe art_gallery bar bowling_alley museum movie_theater meal_delivery meal_takeaway
-        # zoo spa restaurant
         'opennow': 'true',
         'rankby': 'prominence',
         'language': 'ja'
     }
     s = requests.Session()
-    r = s.get(PLACES_TEXTSEARCH_ENDPOINT, params=params)
+
+    r = s.get(PLACES_NEARBYSEARCH_ENDPOINT, params=params)
+    r.encoding = r.apparent_encoding
     json_result = r.json()
+    print(json.dumps(json_result, sort_keys=True, ensure_ascii=False).encode('utf-8'))
 
     return json_result
 
