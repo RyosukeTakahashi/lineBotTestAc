@@ -16,11 +16,12 @@ from linebot import (LineBotApi, WebhookParser)
 from linebot.exceptions import (InvalidSignatureError)
 from linebot.models import (
     MessageEvent, TextMessage, TextSendMessage, LocationMessage, ConfirmTemplate,
-    PostbackEvent, JoinEvent, FollowEvent, TemplateSendMessage, CarouselTemplate, CarouselColumn,
+    PostbackEvent, JoinEvent, TemplateSendMessage, CarouselTemplate, CarouselColumn,
     ButtonsTemplate, PostbackTemplateAction, MessageTemplateAction, URITemplateAction
 )
 
-# tested in ngrok 8000
+# tested in
+# ngrok http 8000
 
 CHATBOT_ENDPOINT = 'https://chatbot-api.userlocal.jp/api/chat'
 SIMPLE_WIKIPEDIA_API = 'http://wikipedia.simpleapi.net/api'
@@ -59,7 +60,7 @@ parser = WebhookParser(CHANNEL_SECRET)
 app = Flask(__name__)
 
 
-@app.route("/callback", methods=['POST'])
+@app.route("/line/callback", methods=['POST'])
 def callback():
     signature = request.headers['X-Line-Signature']
 
@@ -146,7 +147,7 @@ def callback():
                     end_index = result_count - 1
                     start_index = end_index - (end_index % 5)
                     second_message = TextSendMessage(
-                        text='指定された条件でこれ以上の候補は見つかりませんでした。\n条件を変えて検索する場合は、下の店を探すから現在地を入力してください。'
+                        text='指定された条件でこれ以上の候補は見つかりませんでした。\n条件を変えて検索する場合は、下のボタンから現在地を入力してください。'
                     )
 
                 line_bot_api.reply_message(
@@ -212,7 +213,7 @@ def get_area_postback_template_action(area, i):
 def get_budget_buttons_template_message(data_dict):
 
     actions = [get_budget_postback_template_action(data_dict, i, budget_range)
-               for i, budget_range in enumerate(['安め', '普通', '高め'])]
+               for i, budget_range in enumerate(['多分、~1200未満', '2000円近く覚悟', '3000円かそれ以上'])]
 
     buttons_template_message = TemplateSendMessage(
         alt_text='予算を決めるボタンが表示されています',
@@ -378,7 +379,7 @@ def get_geocode(address):
     return location_str
 
 
-def get_places_by_by_search(budget, transportation, location_geometry):
+def get_places_by_nearby_search(budget, transportation, location_geometry):
 
     radius = ''
     print(transportation)
