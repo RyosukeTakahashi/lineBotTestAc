@@ -4,3 +4,5 @@ applications:
    host: ryo-murakami-apis
    memory: 128M
    timeout: 30
+
+# change the values for you need.
