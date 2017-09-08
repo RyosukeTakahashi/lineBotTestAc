@@ -1,7 +1,6 @@
 import unittest
 import app
-import os
-import re
+
 
 class TestLineBot(unittest.TestCase):
 

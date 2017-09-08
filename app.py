@@ -1,9 +1,6 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
-# todo CI
-# todo log to database
-
 from cloudant import Cloudant
 import os
 import sys
@@ -69,7 +66,7 @@ if 'VCAP_SERVICES' in os.environ:
         url = 'https://' + creds['host']
         client = Cloudant(user, password, url=url, connect=True)
         db = client.create_database(db_name, throw_on_exists=False)
-elif os.path.isfile('vcap-local.json'): # fdsfa
+elif os.path.isfile('vcap-local.json'):
     with open('vcap-local.json') as f:
         vcap = json.load(f)
         print('Found local VCAP_SERVICES')
@@ -103,7 +100,8 @@ parser = WebhookParser(CHANNEL_SECRET)
 app = Flask(__name__)
 
 port = int(os.getenv('PORT', 8000))
-print(port) #8080 on bluemix
+# 8080 on bluemix
+print(port)
 
 
 @app.route('/')
@@ -124,7 +122,7 @@ def get_visitor():
 def put_visitor():
     user = request.json['name']
     if client:
-        data = {'name':user}
+        data = {'name': user}
         db.create_document(data)
         return 'Hello %s! I added you to the database.' % user
     else:
@@ -170,6 +168,8 @@ def callback():
                         event.reply_token,
                         get_area_buttons_template_message(text)
                     )
+
+                post_text_to_db(event)
 
             # if isinstance(event.message, LocationMessage):
 
@@ -239,8 +239,6 @@ def callback():
                 place_detail = get_place_detail(place_id)['result']
 
                 messages = []
-                if 'map' in data_str:
-                    messages = [TextSendMessage(text=place_detail['url'])]
                 if 'phone' in data_str:
                     messages = [TextSendMessage(text=place_detail['formatted_phone_number'])]
 
@@ -248,6 +246,7 @@ def callback():
                     event.reply_token,
                     messages
                 )
+            post_postback_to_db(event)
 
     return 'OK'
 
@@ -352,7 +351,7 @@ def get_transportation_postback_template_action(data_dict, transportation):
 def get_spot_carousels(places5):
 
     columns = [get_carousel_column_template(place) for place in places5]
-    # todo template.py のCarouselTemplate(Base)をCarouselTemplate(Template)に変えたほうがいいような
+    # template.py のCarouselTemplate(Base)をCarouselTemplate(Template)に変えたほうがいいような
     carousel_template_message = TemplateSendMessage(
         alt_text='候補地が表示されています。',
         template=CarouselTemplate(columns=columns)
@@ -378,6 +377,7 @@ def get_carousel_column_template(place):
     if len(area) > 17:
         line_change = ''
 
+    price = ''
     if place['price_level'] is 1:
         price = '~1200円'
     if place['price_level'] is 2:
@@ -514,6 +514,44 @@ def get_place_photo_url(photo_ref):
     url = PLACES_PHOTO_ENDPOINT + '?' + urlparse.urlencode(params)
 
     return url
+
+
+def post_text_to_db(event):
+
+    data_to_send = {
+        "text": event.message.text,
+        "text_id": event.message.id,
+        "user_id": event.source.user_id,
+        "type": event.type,
+        "timestamp": event.timestamp
+    }
+
+    if client:
+        db.create_document(data_to_send)
+        print('data added to db')
+        return 'done'
+
+    else:
+        print('No database')
+
+
+def post_postback_to_db(event):
+
+    data_to_send = {
+        "postback_data": event.postback.data,
+        "user_id": event.source.user_id,
+        "type": event.type,
+        "timestamp": event.timestamp
+    }
+
+    if client:
+        db.create_document(data_to_send)
+        print('data added to db')
+        return 'done'
+
+    else:
+        print('No database')
+
 
 # api using function end.
 
