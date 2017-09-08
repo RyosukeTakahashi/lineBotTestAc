@@ -1,8 +1,6 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
-
-# todo how to use os.env.  Use manifest.yml
 # todo CI
 # todo log to database
 
@@ -10,13 +8,13 @@ from cloudant import Cloudant
 import os
 import sys
 from dotenv import load_dotenv
+import atexit
 import pprint
 import re
 import json
 import requests
 import urllib.parse as urlparse
 import cf_deployment_tracker
-from argparse import ArgumentParser
 from flask import Flask, request, abort, render_template, jsonify
 from linebot import (LineBotApi, WebhookParser)
 from linebot.exceptions import (InvalidSignatureError)
@@ -57,6 +55,32 @@ else:
     GEOCODING_APIKEY = os.getenv('GEOCODING_APIKEY')
     print(CHANNEL_SECRET)
 
+db_name = 'mydb'
+client = None
+db = None
+
+if 'VCAP_SERVICES' in os.environ:
+    vcap = json.loads(os.getenv('VCAP_SERVICES'))
+    print('Found VCAP_SERVICES')
+    if 'cloudantNoSQLDB' in vcap:
+        creds = vcap['cloudantNoSQLDB'][0]['credentials']
+        user = creds['username']
+        password = creds['password']
+        url = 'https://' + creds['host']
+        client = Cloudant(user, password, url=url, connect=True)
+        db = client.create_database(db_name, throw_on_exists=False)
+elif os.path.isfile('vcap-local.json'): # fdsfa
+    with open('vcap-local.json') as f:
+        vcap = json.load(f)
+        print('Found local VCAP_SERVICES')
+        creds = vcap['services']['cloudantNoSQLDB'][0]['credentials']
+        user = creds['username']
+        password = creds['password']
+        url = 'https://' + creds['host']
+        client = Cloudant(user, password, url=url, connect=True)
+        db = client.create_database(db_name, throw_on_exists=False)
+
+
 AREA_COUNT = {
   '天久保': 4,
   '桜': 3,
@@ -85,6 +109,33 @@ print(port) #8080 on bluemix
 @app.route('/')
 def home():
     return render_template('index.html')
+
+
+@app.route('/api/visitors', methods=['GET'])
+def get_visitor():
+    if client:
+        return jsonify(list(map(lambda doc: doc['name'], db)))
+    else:
+        print('No database')
+        return jsonify([])
+
+
+@app.route('/api/visitors', methods=['POST'])
+def put_visitor():
+    user = request.json['name']
+    if client:
+        data = {'name':user}
+        db.create_document(data)
+        return 'Hello %s! I added you to the database.' % user
+    else:
+        print('No database')
+        return 'Hello %s!' % user
+
+
+@atexit.register
+def shutdown():
+    if client:
+        client.disconnect()
 
 
 @app.route("/line/callback", methods=['POST'])
