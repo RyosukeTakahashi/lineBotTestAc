@@ -49,9 +49,8 @@ Anaconda python3
     - Google Developer Consoleからプロジェクト作ったり、API有効化したり。
 
 ## 理解するのに必要であろう知識やスキル
-
-- Python
 - PCの基礎
+- Python (+ Flask)
 - エディタをそれなりに使える
 - Webアプリケーションの基礎知識
     - post, get, port, html, css
