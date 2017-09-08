@@ -109,13 +109,13 @@ def home():
     return render_template('index.html')
 
 
-@app.route('/api/visitors', methods=['GET'])
-def get_visitor():
-    if client:
-        return jsonify(list(map(lambda doc: doc['name'], db)))
-    else:
-        print('No database')
-        return jsonify([])
+# @app.route('/api/visitors', methods=['GET'])
+# def get_visitor():
+#     if client:
+#         return jsonify(list(map(lambda doc: doc['name'], db)))
+#     else:
+#         print('No database')
+#         return jsonify([])
 
 
 @app.route('/api/visitors', methods=['POST'])
