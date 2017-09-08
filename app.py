@@ -1,17 +1,23 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
+
+# todo how to use os.env.  Use manifest.yml
+# todo CI
+# todo log to database
+
+from cloudant import Cloudant
 import os
 import sys
 from dotenv import load_dotenv
 import pprint
 import re
 import json
-import pickle
 import requests
 import urllib.parse as urlparse
+import cf_deployment_tracker
 from argparse import ArgumentParser
-from flask import Flask, request, abort
+from flask import Flask, request, abort, render_template, jsonify
 from linebot import (LineBotApi, WebhookParser)
 from linebot.exceptions import (InvalidSignatureError)
 from linebot.models import (
@@ -19,6 +25,8 @@ from linebot.models import (
     PostbackEvent, JoinEvent, TemplateSendMessage, CarouselTemplate, CarouselColumn,
     ButtonsTemplate, PostbackTemplateAction, MessageTemplateAction, URITemplateAction
 )
+
+cf_deployment_tracker.track()
 
 # tested in
 # ngrok http 8000
@@ -32,11 +40,22 @@ PLACES_PHOTO_ENDPOINT = 'https://maps.googleapis.com/maps/api/place/photo'
 GEOCODING_ENDPOINT = 'https://maps.googleapis.com/maps/api/geocode/json'
 
 # get CHANNEL_SECRET and CHANNEL_ACCESS_TOKEN from your environment variable
-ENV = load_dotenv('.env')
-CHANNEL_SECRET = os.environ.get('CHANNEL_SECRET')
-CHANNEL_ACCESS_TOKEN = os.environ.get('CHANNEL_ACCESS_TOKEN')
-PLACES_APIKEY = os.environ.get('PLACES_APIKEY')
-GEOCODING_APIKEY = os.environ.get('GEOCODING_APIKEY')
+
+if os.path.isfile('.env'):
+    print('found .env. So it should be a local environment.')
+    ENV = load_dotenv('.env')
+    CHANNEL_SECRET = os.environ.get('CHANNEL_SECRET')
+    CHANNEL_ACCESS_TOKEN = os.environ.get('CHANNEL_ACCESS_TOKEN')
+    PLACES_APIKEY = os.environ.get('PLACES_APIKEY')
+    GEOCODING_APIKEY = os.environ.get('GEOCODING_APIKEY')
+
+else:
+    print('Cannot find .env. So it should be on the cloud.')
+    CHANNEL_SECRET = os.getenv('CHANNEL_SECRET')
+    CHANNEL_ACCESS_TOKEN = os.getenv('CHANNEL_ACCESS_TOKEN')
+    PLACES_APIKEY = os.getenv('PLACES_APIKEY')
+    GEOCODING_APIKEY = os.getenv('GEOCODING_APIKEY')
+    print(CHANNEL_SECRET)
 
 AREA_COUNT = {
   '天久保': 4,
@@ -58,6 +77,14 @@ line_bot_api = LineBotApi(CHANNEL_ACCESS_TOKEN)
 parser = WebhookParser(CHANNEL_SECRET)
 
 app = Flask(__name__)
+
+port = int(os.getenv('PORT', 8000))
+print(port) #8080 on bluemix
+
+
+@app.route('/')
+def home():
+    return render_template('index.html')
 
 
 @app.route("/line/callback", methods=['POST'])
@@ -371,8 +398,8 @@ def get_geocode(address):
     }
     s = requests.Session()
     r = s.get(GEOCODING_ENDPOINT, params=params)
-    json = r.json()
-    location = json['results'][0]['geometry']['location']
+    json_res = r.json()
+    location = json_res['results'][0]['geometry']['location']
 
     location_str = str(location['lat']) + ',' + str(location['lng'])
 
@@ -449,11 +476,11 @@ def get_postback_data_dict(data):
 #####################################
 if __name__ == "__main__":
 
-    arg_parser = ArgumentParser(
-        usage='Usage: python ' + __file__ + ' [--port <port>] [--help]'
-    )
-    arg_parser.add_argument('-p', '--port', default=8000, help='port')
-    arg_parser.add_argument('-d', '--debug', default=False, help='debug')
-    options = arg_parser.parse_args()
+    # arg_parser = ArgumentParser(
+    #     usage='Usage: python ' + __file__ + ' [--port <port>] [--help]'
+    # )
+    # arg_parser.add_argument('-p', '--port', default=port, help='port')
+    # arg_parser.add_argument('-d', '--debug', default=False, help='debug')
+    # options = arg_parser.parse_args()
 
-    app.run(debug=options.debug, port=options.port)
+    app.run(debug=True, port=port, host='0.0.0.0')

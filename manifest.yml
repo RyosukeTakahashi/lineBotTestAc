@@ -1,0 +1,6 @@
+---
+applications:
+ - name: Ryo-api
+   host: ryo-murakami-apis
+   memory: 128M
+   timeout: 30
