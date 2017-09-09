@@ -484,7 +484,10 @@ def get_places_by_nearby_search(budget, transportation, location_geometry):
     r = s.get(PLACES_NEARBYSEARCH_ENDPOINT, params=params)
     r.encoding = r.apparent_encoding
     json_result = r.json()
-    print(json.dumps(json_result, sort_keys=True, ensure_ascii=False).encode('utf-8'))
+    # pprint.pprint(json_result)
+    with open('place.json', mode='w', encoding='utf-8') as f:
+        f.write(json.dumps(json_result, sort_keys=True, ensure_ascii=False, indent=2))
+        print(json.dumps(json_result, sort_keys=True, ensure_ascii=False, indent=2))  # .encode('utf-8'))
 
     return json_result
 
