@@ -221,12 +221,13 @@ def callback():
 
                 second_message = get_additional_search_confirm_template(data_dict)
 
-                if end_index > result_count:
-                    end_index = result_count - 1
-                    start_index = end_index - (end_index % 5)
+                if end_index >= result_count:
+                    end_index = result_count
                     second_message = TextSendMessage(
                         text='指定された条件でこれ以上の候補は見つかりませんでした。\n条件を変えて検索する場合は、下のボタンから現在地を入力してください。'
                     )
+                    if end_index % 5 is not 0:
+                        start_index = end_index - (end_index % 5)
 
                 line_bot_api.reply_message(
                     event.reply_token,
