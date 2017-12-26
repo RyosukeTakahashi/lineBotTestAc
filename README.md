@@ -23,12 +23,31 @@
 ## 環境
 Anaconda python3
 
-`pip install line-bot-sdk`
+## 準備
+
+`pip install -r requirements.txt`
 
 あと適宜足りなかったら pip でインストール
 
 
+### 各種APIの取得
+.env.sampleを.envにリネームし、各種APIを取得
+
+- https://developers.line.me/console/
+- https://developers.google.com/places/web-service/?hl=ja
+- https://developers.google.com/maps/documentation/geocoding/get-api-key?hl=ja
+- ibm cloud -> select your App -> Connections -> Cloudant -> View Credentials
+
+
 ## 実行方法
+
+- db_name変数を適宜変える。Cloudant NoSQL DBに作ったdbの名前にする
+
+ngrokを使う場合,
+ngrok.exeを起動して、`ngrok.exe http 8000`
+webhook url を設定して、
+- https://xxxxxxxx.ngrok.io/line/callback
+
 `python app.py`
 
 
