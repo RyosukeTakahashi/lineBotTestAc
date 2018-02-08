@@ -44,6 +44,7 @@ if os.path.isfile('.env') or os.path.isfile('env'):
     CHANNEL_ACCESS_TOKEN = os.environ.get('CHANNEL_ACCESS_TOKEN')
     PLACES_APIKEY = os.environ.get('PLACES_APIKEY')
     GEOCODING_APIKEY = os.environ.get('GEOCODING_APIKEY')
+    PORT = int(os.environ.get("PORT"))
 
 # envの記述方法を書いておくべきかな
 else:
@@ -52,6 +53,7 @@ else:
     CHANNEL_ACCESS_TOKEN = os.getenv('CHANNEL_ACCESS_TOKEN')
     PLACES_APIKEY = os.getenv('PLACES_APIKEY')
     GEOCODING_APIKEY = os.getenv('GEOCODING_APIKEY')
+    PORT = int(os.getenv('PORT'))
     print(CHANNEL_SECRET)
 
 
@@ -102,9 +104,8 @@ parser = WebhookParser(CHANNEL_SECRET)
 
 app = Flask(__name__)
 
-port = int(os.getenv('PORT', 8000))
 # 8080 on bluemix
-print(port)
+print(PORT)
 
 
 @app.route('/')
@@ -586,4 +587,4 @@ if __name__ == "__main__":
     # arg_parser.add_argument('-d', '--debug', default=False, help='debug')
     # options = arg_parser.parse_args()
 
-    app.run(debug=True, port=port, host='0.0.0.0')
+    app.run(debug=True, port=PORT, host='0.0.0.0')
