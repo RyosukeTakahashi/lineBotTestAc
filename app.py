@@ -20,7 +20,7 @@ from linebot.models import (
     PostbackEvent, JoinEvent, TemplateSendMessage, CarouselTemplate, CarouselColumn,
     ButtonsTemplate, PostbackTemplateAction, MessageTemplateAction, URITemplateAction
 )
-
+# https://ryo-murakami-apis.mybluemix.net/line/callback
 cf_deployment_tracker.track()
 
 # tested in
@@ -35,15 +35,17 @@ PLACES_PHOTO_ENDPOINT = 'https://maps.googleapis.com/maps/api/place/photo'
 GEOCODING_ENDPOINT = 'https://maps.googleapis.com/maps/api/geocode/json'
 
 # get CHANNEL_SECRET and CHANNEL_ACCESS_TOKEN from your environment variable
-
-if os.path.isfile('.env'):
+if os.path.isfile('.env') or os.path.isfile('env'):
     print('found .env. So it should be a local environment.')
     ENV = load_dotenv('.env')
+    if ENV is None:
+        ENV = load_dotenv('env')
     CHANNEL_SECRET = os.environ.get('CHANNEL_SECRET')
     CHANNEL_ACCESS_TOKEN = os.environ.get('CHANNEL_ACCESS_TOKEN')
     PLACES_APIKEY = os.environ.get('PLACES_APIKEY')
     GEOCODING_APIKEY = os.environ.get('GEOCODING_APIKEY')
 
+# envの記述方法を書いておくべきかな
 else:
     print('Cannot find .env. So it should be on the cloud.')
     CHANNEL_SECRET = os.getenv('CHANNEL_SECRET')
@@ -51,6 +53,7 @@ else:
     PLACES_APIKEY = os.getenv('PLACES_APIKEY')
     GEOCODING_APIKEY = os.getenv('GEOCODING_APIKEY')
     print(CHANNEL_SECRET)
+
 
 db_name = 'mydb'
 client = None
@@ -379,14 +382,21 @@ def get_carousel_column_template(place):
         line_change = ''
 
     price = ''
-    if place['price_level'] is 1:
-        price = '~1200円'
-    if place['price_level'] is 2:
-        price = '1200円~'
-    if place['price_level'] is 3:
-        price = '3000円~'
+    address_template = ''
+    if 'price_level' in place.keys():
+        if place['price_level'] is 1:
+            price = '~1200円'
+        if place['price_level'] is 2:
+            price = '1200円~'
+        if place['price_level'] is 3:
+            price = '3000円~'
+        address_template = '住所: {}\nレビュー: {} {}予算: {}'
 
-    address = '住所: {}\nレビュー: {} {}予算: {}'.format(
+    else:
+        price = 0
+        address_template = '住所: {}\nレビュー: {}'
+
+    address = address_template.format(
         area, str(place['rating']),
         line_change, price
     )
@@ -474,14 +484,14 @@ def get_places_by_nearby_search(budget, transportation, location_geometry):
         'keyword': 'レストラン OR カフェ OR 定食 OR バー',
         'location': location_geometry,
         'radius': radius,
-        'maxprice': budget,
-        'minprice': str(int(budget)-1),
+        # 'maxprice': budget,
+        # 'minprice': str(int(budget)-1),
         'opennow': 'true',
         'rankby': 'prominence',
         'language': 'ja'
     }
     s = requests.Session()
-
+    print(s.get(PLACES_NEARBYSEARCH_ENDPOINT, params=params).url)
     r = s.get(PLACES_NEARBYSEARCH_ENDPOINT, params=params)
     r.encoding = r.apparent_encoding
     json_result = r.json()
